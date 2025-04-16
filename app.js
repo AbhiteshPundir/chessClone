@@ -13,6 +13,7 @@ const io = socket(server);
 const chess = new Chess();
 let players = {};
 let currentPlayer = "w";
+let gameStarted = false;
 
 app.set('view engine', 'ejs');
 app.use(express.static(path.join(__dirname, 'public')));
@@ -41,31 +42,44 @@ io.on("connection", (uniqueSocket)=>{
                   delete players.black;
             }
             // console.log("User disconnected");
+
+            if(Object.keys(players).length === 0){
+                  gameStarted = false;
+            }
       });
 
       uniqueSocket.on("move", (move) => {
-            try {
-                  //check if the write player did the move
-                  if(chess.turn==='w' && uniqueSocket.id !== players.white)   return;
-                  if(chess.turn==='b' && uniqueSocket.id !== players.black)   return;
-
-                  const result = chess.move(move);//checks if the move is valid
-                  if(result){
-                        currentPlayer = chess.turn();
-                        io.emit("moveMade", move);
-                        io.emit("boardState", chess.fen());		
-                  } else{
-                        console.log("Invalid move", move);
-                        uniqueSocket.emit("invalidMove", move);
-                  }
-
-            } catch (error) {
-                  console.log("Error in move", error);
-                  uniqueSocket.emit("invalidMove", move);
+            try{
+                if (!gameStarted) return; // Ignore moves if the game hasn't started //button logic
+                if(chess.turn() === "w" && uniqueSocket.id !== players.white) return;
+                if(chess.turn() === "b" && uniqueSocket.id !== players.black) return;
+    
+                const result = chess.move(move); // if the move in invalid then no result, so may crash; hence the try and catch block
+                if(result){ // if right move then send to the frontend
+                    currentPlayer = chess.turn();
+                    io.emit("move", move);
+                    io.emit("boardState", chess.fen()); //fen is the chess piece notation
+                }
+                else{
+                    console.log("Invalid move : ", move);
+                    uniqueSocket.emit("invalidMove", move); 
+                }
+    
+            }catch(err){
+                console.log(err);
+                uniqueSocket.emit("Invalid Move : ", move); 
+    
             }
-      });
-})
-
-server.listen(3000, () =>{
-      console.log("Server is running on port 3000");
-})
+        });
+    
+        //message logic
+        if (Object.keys(players).length === 2 && !gameStarted) {
+            gameStarted = true;
+            io.emit("gameStarted");
+            io.emit("boardState", chess.fen());
+        }
+});
+    
+server.listen(3000, function(){
+      console.log("listening on 3000")
+});
